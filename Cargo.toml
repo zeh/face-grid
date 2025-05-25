@@ -1,0 +1,13 @@
+[package]
+name = "face-stack"
+version = "0.2.0"
+edition = "2024"
+
+[dependencies]
+getrandom = "0.3.3"
+glob = "0.3.2"
+image = "0.24.9" # This has to match the version used by rust-faces, otherwise ToArray3 doesn't work
+rust-faces = "1.0.0"
+structopt = "0.3.26"
+strum = "0.27.1"
+strum_macros = "0.27.1"
