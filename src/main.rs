@@ -82,7 +82,7 @@ fn blend_image(
 }
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "face-stack", about = "Stacks face-aligned images.")]
+#[structopt(name = "face-grid", about = "Creates a grid of face-aligned images.")]
 struct Opt {
 	/// File mask (e.g., "images/*.jpg")
 	#[structopt(long, default_value = "*.jpg")]
