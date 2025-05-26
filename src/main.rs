@@ -122,20 +122,23 @@ fn main() {
 	// Create the output image
 	let mut output_image: Rgb32FImage =
 		ImageBuffer::from_pixel(target_width, target_height, Rgb([0.5, 0.5, 0.5]));
-	let mut num_images_used = 0usize;
 	let mut num_images_read = 0usize;
+
+	// First, read all images and find faces, since we have to know how many cells we have in advance
 
 	// Reads all images from the given input mask
 	let image_files = glob(&opt.input)
 		.expect(format!("Failed to read glob pattern: {}", opt.input).as_str())
 		.collect::<Vec<Result<PathBuf, GlobError>>>();
 
+	let mut results: Vec<(RgbImage, XYi)> = vec![];
+
 	for image_file in &image_files {
 		if let Ok(path) = image_file {
 			// File can be opened
 			terminal::erase_line_to_end();
 			print!(
-				"({}/{}) Reading {:?}",
+				"(Step 1/2) ({}/{}) Reading {:?}",
 				num_images_read + 1,
 				image_files.len(),
 				&path.file_name().unwrap()
@@ -146,13 +149,13 @@ fn main() {
 				print!(", {:?}x{:?}", img.width(), img.height());
 				let array3_image = img.into_rgb8().into_array3();
 				let faces = face_detector.detect(array3_image.view().into_dyn()).unwrap();
-				let rgb_image = array3_image.to_rgb8();
 				print!(", {} faces", faces.len());
 
 				if faces.len() == 1 {
 					// Has a valid face
 					println!(", confidence {:?}", faces[0].confidence);
 
+					let rgb_image = array3_image.to_rgb8();
 					let face_rect = &faces[0].rect;
 
 					// Find out what the face size should be inside our face target box
@@ -174,10 +177,7 @@ fn main() {
 						target_height as f32 / 2.0 - (face_rect.y + face_rect.height / 2.0) * new_image_scale,
 					));
 
-					// Finally, blend it all
-					blend_image(&mut output_image, &resized_image, param_offset);
-
-					num_images_used += 1;
+					results.push((resized_image, param_offset));
 
 					terminal::cursor_up();
 				} else {
@@ -190,7 +190,7 @@ fn main() {
 
 		num_images_read += 1;
 
-		if opt.max_images > 0 && num_images_read >= opt.max_images as usize {
+		if opt.max_images > 0 && results.len() >= opt.max_images as usize {
 			terminal::erase_line_to_end();
 			println!("Reached the maximum number of input images; skipping additional files.");
 			break;
@@ -198,7 +198,26 @@ fn main() {
 	}
 
 	terminal::erase_line_to_end();
-	println!("Done. {} images processed, with {} valid images used.", image_files.len(), num_images_used);
+	println!(
+		"(Step 1/2) Done. {} images processed, with {} valid results found.",
+		image_files.len(),
+		results.len()
+	);
+
+	// Second, blend the valid images found
+	let mut num_images_blended = 0;
+	for result in &results {
+		terminal::erase_line_to_end();
+		println!("(Step 2/2) ({}/{}) Blending image", num_images_blended + 1, results.len());
+
+		blend_image(&mut output_image, &result.0, result.1);
+		num_images_blended += 1;
+
+		terminal::cursor_up();
+	}
+
+	terminal::erase_line_to_end();
+	println!("(Step 2/2) Done. {} images blended.", results.len());
 
 	// Convert the output image from Rgb-32f to Rgb-u8
 	let mut output_u8 = RgbImage::new(output_image.width(), output_image.height());
