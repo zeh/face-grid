@@ -64,8 +64,8 @@ struct Opt {
 	input: String,
 
 	/// Output image dimensions (e.g., "800x600")
-	#[structopt(long, default_value = "1024x1024", parse(try_from_str = parse_image_dimensions))]
-	size: (u32, u32),
+	#[structopt(long, default_value = "100x100", parse(try_from_str = parse_image_dimensions))]
+	cell_size: (u32, u32),
 
 	/// Scale of the face (e.g., "0.5")
 	#[structopt(long, default_value = "1")]
@@ -75,6 +75,10 @@ struct Opt {
 	#[structopt(long, default_value = "face-stack-output.jpg", parse(from_os_str))]
 	output: PathBuf,
 
+	/// Number of columns to use in the image. If omitted, try as close as possible to get a square.
+	#[structopt(long, default_value = "0")]
+	columns: u32,
+
 	/// Number of maximum valid images to use for input
 	#[structopt(long, default_value = "0")]
 	max_images: u32,
@@ -82,12 +86,9 @@ struct Opt {
 
 fn main() {
 	let opt = Opt::from_args();
-	let (target_width, target_height) = opt.size;
+	let (cell_width, cell_height) = opt.cell_size;
 
-	println!(
-		"Will get files from {:?}, at size {}x{}, and output at {:?}.",
-		opt.input, target_width, target_height, opt.output
-	);
+	println!("Will get files from {:?}, and output at {:?}.", opt.input, opt.output);
 
 	let face_detector =
         // Alternative:
@@ -114,17 +115,13 @@ fn main() {
 
 	// Decide where the face will be in the output image
 	let typical_face_size: WHf = (75f32, 100f32); // Typically 0.75 aspect ratio
-	let faces_rect_inside = fit_inside((target_width as f32, target_height as f32), typical_face_size);
+	let faces_rect_inside = fit_inside((cell_width as f32, cell_height as f32), typical_face_size);
 	let typical_face_scale = 0.6f32 * opt.face_scale;
 	let target_faces_rect: WHf =
 		(faces_rect_inside.0 * typical_face_scale, faces_rect_inside.1 * typical_face_scale);
 
-	// Create the output image
-	let mut output_image: Rgb32FImage =
-		ImageBuffer::from_pixel(target_width, target_height, Rgb([0.5, 0.5, 0.5]));
-	let mut num_images_read = 0usize;
-
 	// First, read all images and find faces, since we have to know how many cells we have in advance
+	let mut num_images_read = 0usize;
 
 	// Reads all images from the given input mask
 	let image_files = glob(&opt.input)
@@ -173,8 +170,8 @@ fn main() {
 
 					// Get all the options
 					let param_offset: XYi = xyf_to_xyi((
-						target_width as f32 / 2.0 - (face_rect.x + face_rect.width / 2.0) * new_image_scale,
-						target_height as f32 / 2.0 - (face_rect.y + face_rect.height / 2.0) * new_image_scale,
+						cell_width as f32 / 2.0 - (face_rect.x + face_rect.width / 2.0) * new_image_scale,
+						cell_height as f32 / 2.0 - (face_rect.y + face_rect.height / 2.0) * new_image_scale,
 					));
 
 					results.push((resized_image, param_offset));
@@ -204,7 +201,26 @@ fn main() {
 		results.len()
 	);
 
+	let num_cols = if opt.columns == 0 {
+		(results.len() as f32).sqrt().ceil() as u32
+	} else {
+		opt.columns
+	};
+	let num_rows = (results.len() as f32 / num_cols as f32).ceil() as u32;
+	let output_width = num_cols * cell_width;
+	let output_height = num_rows * cell_height;
+
+	println!(
+		"The output size will be {}x{}, with {} rows and {} columns of images.",
+		output_width, output_height, num_rows, num_cols
+	);
+
 	// Second, blend the valid images found
+
+	// Create the output image
+	let mut output_image: Rgb32FImage =
+		ImageBuffer::from_pixel(cell_width, cell_height, Rgb([0.0, 0.0, 0.0]));
+
 	let mut num_images_blended = 0;
 	for result in &results {
 		terminal::erase_line_to_end();
