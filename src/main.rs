@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use glob::{GlobError, glob};
-use image::{ImageBuffer, Pixel, Rgb, RgbImage, imageops};
+use image::{ImageBuffer, Pixel, RgbImage, Rgba, RgbaImage, imageops};
 use rust_faces::{
 	BlazeFaceParams, FaceDetection, FaceDetectorBuilder, InferParams, Provider, ToArray3, ToRgb8,
 };
@@ -17,7 +17,7 @@ pub mod terminal;
 /**
  * Copy one image on top of another
  */
-fn copy_image(bottom: &mut RgbImage, top: &RgbImage, cell_top_offset: XYi, cell: XYWHi) {
+fn copy_image(bottom: &mut RgbaImage, top: &RgbImage, cell_top_offset: XYi, cell: XYWHi) {
 	// Find paintable intersection between bottom and top
 	let bottom_rect = (0, 0, cell.2, cell.3);
 	let top_rect = (cell_top_offset.0, cell_top_offset.1, top.width(), top.height());
@@ -42,7 +42,7 @@ fn copy_image(bottom: &mut RgbImage, top: &RgbImage, cell_top_offset: XYi, cell:
 				.to_owned()
 				.try_into()
 				.expect("converting pixels to array");
-			bottom.put_pixel(dst_x as u32, dst_y as u32, Rgb(top_px));
+			bottom.put_pixel(dst_x as u32, dst_y as u32, Rgba([top_px[0], top_px[1], top_px[2], 255]));
 		}
 	}
 }
@@ -209,7 +209,8 @@ fn main() {
 	// Second, blend the valid images found
 
 	// Create the output image
-	let mut output_image: RgbImage = ImageBuffer::from_pixel(output_width, output_height, Rgb([0, 0, 0]));
+	let mut output_image: RgbaImage =
+		ImageBuffer::from_pixel(output_width, output_height, Rgba([0, 0, 0, 0]));
 
 	let mut num_images_blended = 0;
 	for result in &results {
