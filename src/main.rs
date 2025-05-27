@@ -8,7 +8,7 @@ use rust_faces::{
 use structopt::StructOpt;
 
 use blending::{BlendingMode, blend_pixel, pixel_u8_to_f32};
-use geom::{WHf, WHi, XYi, fit_inside, intersect, whf_to_whi, xyf_to_xyi};
+use geom::{WHf, WHi, XYWHi, XYi, fit_inside, intersect, whf_to_whi, xyf_to_xyi};
 use parsing::parse_image_dimensions;
 
 pub mod blending;
@@ -19,25 +19,25 @@ pub mod terminal;
 /**
  * Copy one image on top of another
  */
-fn blend_image(bottom: &mut Rgb32FImage, top: &RgbImage, top_offset: XYi) {
+fn blend_image(bottom: &mut Rgb32FImage, top: &RgbImage, cell_top_offset: XYi, cell: XYWHi) {
 	// Find paintable intersection between bottom and top
-	let bottom_rect = (0, 0, bottom.width(), bottom.height());
-	let top_rect = (top_offset.0, top_offset.1, top.width(), top.height());
+	let bottom_rect = (0, 0, cell.2, cell.3);
+	let top_rect = (cell_top_offset.0, cell_top_offset.1, top.width(), top.height());
 	let intersection = intersect(bottom_rect, top_rect);
 	if intersection.is_none() {
 		panic!("Cannot blend image; no intersection between bottom and top image.");
 	}
 	let intersection_rect = intersection.unwrap();
 
-	let dst_x1 = intersection_rect.0;
-	let dst_y1 = intersection_rect.1;
-	let dst_x2 = intersection_rect.0 + intersection_rect.2 as i32 - 1;
-	let dst_y2 = intersection_rect.1 + intersection_rect.3 as i32 - 1;
+	let dst_x1 = intersection_rect.0 + cell.0;
+	let dst_y1 = intersection_rect.1 + cell.1;
+	let dst_x2 = intersection_rect.0 + intersection_rect.2 as i32 - 1 + cell.0;
+	let dst_y2 = intersection_rect.1 + intersection_rect.3 as i32 - 1 + cell.1;
 
 	for dst_y in dst_y1..dst_y2 {
-		let src_y = (dst_y - top_offset.1) as u32;
+		let src_y = (dst_y - cell_top_offset.1 - cell.1) as u32;
 		for dst_x in dst_x1..dst_x2 {
-			let src_x = (dst_x - top_offset.0) as u32;
+			let src_x = (dst_x - cell_top_offset.0 - cell.0) as u32;
 			let bottom_px: [f32; 3] = bottom
 				.get_pixel(dst_x as u32, dst_y as u32)
 				.channels()
@@ -219,14 +219,22 @@ fn main() {
 
 	// Create the output image
 	let mut output_image: Rgb32FImage =
-		ImageBuffer::from_pixel(cell_width, cell_height, Rgb([0.0, 0.0, 0.0]));
+		ImageBuffer::from_pixel(output_width, output_height, Rgb([0.0, 0.0, 0.0]));
 
 	let mut num_images_blended = 0;
 	for result in &results {
 		terminal::erase_line_to_end();
 		println!("(Step 2/2) ({}/{}) Blending image", num_images_blended + 1, results.len());
+		let col = num_images_blended % num_cols;
+		let row = num_images_blended / num_cols;
+		let cell_tr = (col * cell_width, row * cell_height);
 
-		blend_image(&mut output_image, &result.0, result.1);
+		blend_image(
+			&mut output_image,
+			&result.0,
+			result.1,
+			(cell_tr.0 as i32, cell_tr.1 as i32, cell_width, cell_height),
+		);
 		num_images_blended += 1;
 
 		terminal::cursor_up();
