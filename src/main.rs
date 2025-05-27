@@ -1,17 +1,15 @@
 use std::path::PathBuf;
 
 use glob::{GlobError, glob};
-use image::{ImageBuffer, Pixel, Rgb, Rgb32FImage, RgbImage, imageops};
+use image::{ImageBuffer, Pixel, Rgb, RgbImage, imageops};
 use rust_faces::{
 	BlazeFaceParams, FaceDetection, FaceDetectorBuilder, InferParams, Provider, ToArray3, ToRgb8,
 };
 use structopt::StructOpt;
 
-use blending::{BlendingMode, blend_pixel, pixel_u8_to_f32};
 use geom::{WHf, WHi, XYWHi, XYi, fit_inside, intersect, whf_to_whi, xyf_to_xyi};
 use parsing::parse_image_dimensions;
 
-pub mod blending;
 pub mod geom;
 pub mod parsing;
 pub mod terminal;
@@ -19,7 +17,7 @@ pub mod terminal;
 /**
  * Copy one image on top of another
  */
-fn blend_image(bottom: &mut Rgb32FImage, top: &RgbImage, cell_top_offset: XYi, cell: XYWHi) {
+fn copy_image(bottom: &mut RgbImage, top: &RgbImage, cell_top_offset: XYi, cell: XYWHi) {
 	// Find paintable intersection between bottom and top
 	let bottom_rect = (0, 0, cell.2, cell.3);
 	let top_rect = (cell_top_offset.0, cell_top_offset.1, top.width(), top.height());
@@ -38,20 +36,13 @@ fn blend_image(bottom: &mut Rgb32FImage, top: &RgbImage, cell_top_offset: XYi, c
 		let src_y = (dst_y - cell_top_offset.1 - cell.1) as u32;
 		for dst_x in dst_x1..dst_x2 {
 			let src_x = (dst_x - cell_top_offset.0 - cell.0) as u32;
-			let bottom_px: [f32; 3] = bottom
-				.get_pixel(dst_x as u32, dst_y as u32)
-				.channels()
-				.to_owned()
-				.try_into()
-				.expect("converting pixels to array");
 			let top_px: [u8; 3] = top
 				.get_pixel(src_x, src_y)
 				.channels()
 				.to_owned()
 				.try_into()
 				.expect("converting pixels to array");
-			let blended = blend_pixel(&bottom_px, &pixel_u8_to_f32(&top_px), 0.5, &BlendingMode::Normal);
-			bottom.put_pixel(dst_x as u32, dst_y as u32, Rgb(blended));
+			bottom.put_pixel(dst_x as u32, dst_y as u32, Rgb(top_px));
 		}
 	}
 }
@@ -218,8 +209,7 @@ fn main() {
 	// Second, blend the valid images found
 
 	// Create the output image
-	let mut output_image: Rgb32FImage =
-		ImageBuffer::from_pixel(output_width, output_height, Rgb([0.0, 0.0, 0.0]));
+	let mut output_image: RgbImage = ImageBuffer::from_pixel(output_width, output_height, Rgb([0, 0, 0]));
 
 	let mut num_images_blended = 0;
 	for result in &results {
@@ -229,7 +219,7 @@ fn main() {
 		let row = num_images_blended / num_cols;
 		let cell_tr = (col * cell_width, row * cell_height);
 
-		blend_image(
+		copy_image(
 			&mut output_image,
 			&result.0,
 			result.1,
@@ -243,15 +233,6 @@ fn main() {
 	terminal::erase_line_to_end();
 	println!("(Step 2/2) Done. {} images blended.", results.len());
 
-	// Convert the output image from Rgb-32f to Rgb-u8
-	let mut output_u8 = RgbImage::new(output_image.width(), output_image.height());
-	{
-		for (x, y, pixel) in output_image.enumerate_pixels() {
-			let scaled = pixel.0.map(|v| (v * 255.0).round().clamp(0.0, 255.0) as u8);
-			output_u8.put_pixel(x, y, Rgb(scaled));
-		}
-	}
-
 	// Finally, saved the final image
-	output_u8.save(&opt.output).expect("Failed to save output image");
+	output_image.save(&opt.output).expect("Failed to save output image");
 }
