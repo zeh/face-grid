@@ -29,8 +29,8 @@ fn copy_image(bottom: &mut RgbImage, top: &RgbImage, cell_top_offset: XYi, cell:
 
 	let dst_x1 = intersection_rect.0 + cell.0;
 	let dst_y1 = intersection_rect.1 + cell.1;
-	let dst_x2 = intersection_rect.0 + intersection_rect.2 as i32 - 1 + cell.0;
-	let dst_y2 = intersection_rect.1 + intersection_rect.3 as i32 - 1 + cell.1;
+	let dst_x2 = intersection_rect.0 + intersection_rect.2 as i32 + cell.0;
+	let dst_y2 = intersection_rect.1 + intersection_rect.3 as i32 + cell.1;
 
 	for dst_y in dst_y1..dst_y2 {
 		let src_y = (dst_y - cell_top_offset.1 - cell.1) as u32;
